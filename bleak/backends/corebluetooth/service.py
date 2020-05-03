@@ -38,4 +38,5 @@ class BleakGATTServiceCoreBluetooth(BleakGATTService):
 
         Should not be used by end user, but rather by `bleak` itself.
         """
+        #print("*******adding char******")  # BSIEVER
         self.__characteristics.append(characteristic)

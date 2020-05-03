@@ -1,6 +1,6 @@
 """
 CentralManagerDelegate will implement the CBCentralManagerDelegate protocol to
-manage CoreBluetooth serivces and resources on the Central End
+manage CoreBluetooth services and resources on the Central End
 
 Created on June, 25 2019 by kevincar <kevincarrolldavis@gmail.com>
 
@@ -57,7 +57,11 @@ class CentralManagerDelegate(NSObject):
         self.connected_peripheral_delegate = None
         self.connected_peripheral = None
         self._connection_state = CMDConnectionState.DISCONNECTED
-
+        
+        
+        # TODO:  Weak references to Client objects (and on disconnect, lookup and try to call disconnect)
+        #  Map of Address -> (WeakRef) to client
+        self._disconnected_callback = {}    # Map of Address to callback
         self.ready = False
         self.devices = {}
 
@@ -219,9 +223,13 @@ class CentralManagerDelegate(NSObject):
     def centralManager_didDisconnectPeripheral_error_(
         self, central: CBCentralManager, peripheral: CBPeripheral, error: NSError
     ):
+        print("Disconnect********")
         logger.debug("Peripheral Device disconnected!")
         self._connection_state = CMDConnectionState.DISCONNECTED
-
+        # See if there's a callback in the dictionary!
+        address = peripheral.identifier().UUIDString()
+        if address in self._disconnected_callback:
+            self._disconnected_callback[address]()
 
 def string2uuid(uuid_str: str) -> CBUUID:
     """Convert a string to a uuid"""

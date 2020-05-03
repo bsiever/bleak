@@ -8,9 +8,12 @@ import logging
 import uuid
 from asyncio.events import AbstractEventLoop
 from typing import Callable, Any, Union
+from asyncio import Future
+from asyncio import coroutine
 
 from Foundation import NSData, CBUUID
 from CoreBluetooth import CBCharacteristicWriteWithResponse, CBCharacteristicWriteWithoutResponse
+from functools import partial
 
 from bleak.backends.client import BaseBleakClient
 from bleak.backends.corebluetooth import CBAPP as cbapp
@@ -45,6 +48,14 @@ class BleakClientCoreBluetooth(BaseBleakClient):
         self._requester = None
         self._callbacks = {}
         self._services = None
+
+    # TODO: Check this!!!
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        print("Exiting from Bleak CB")
+        super(BleakClientCoreBluetooth, self).__aexit__(exc_type, exc_val, exc_tb)
+        # Remove any disconnect callback (avoid memory leak)
+        cbapp.central_manager_delegate._disconnected_callback[self.address] = None
+
 
     def __str__(self):
         return "BleakClientCoreBluetooth ({})".format(self.address)
@@ -91,17 +102,39 @@ class BleakClientCoreBluetooth(BaseBleakClient):
         return cbapp.central_manager_delegate.isConnected
 
     def set_disconnected_callback(
-        self, callback: Callable[[BaseBleakClient], None], **kwargs
-    ) -> None:
+        self, callback: Callable[[BaseBleakClient, Future], None], **kwargs) -> None:
         """Set the disconnected callback.
 
-        N.B. This is not implemented in the Core Bluetooth backend yet.
+        The callback will be called on DBus PropChanged event with
+        the 'Connected' key set to False.
+
+        A disconnect callback must accept two positional arguments,
+        the BleakClient and the Future that called it.
+
+        Example:
+
+        .. code-block::python
+
+            async with BleakClient(mac_addr, loop=loop) as client:
+                def disconnect_callback(client, future):
+                    print(f"Disconnected callback called on {client}!")
+
+                client.set_disconnected_callback(disconnect_callback)
 
         Args:
             callback: callback to be called on disconnection.
 
         """
-        raise NotImplementedError("This is not implemented in the Core Bluetooth backend yet")
+
+        # TODO: promote to "was disconnected" type method 
+        # that does the callback (always called from CBManager)
+
+        def curried_callback():
+            f = self.loop.create_future()  # Mimic BlueZ approach
+            f.set_result(None)
+            _ = self.loop.create_task(coroutine(partial(callback, self, f))())
+        # Configure the callback in the CBCentralManagerDelegate (which gets disconnections)
+        cbapp.central_manager_delegate._disconnected_callback[self.address] = curried_callback if callback != None else None
 
     async def get_services(self) -> BleakGATTServiceCollection:
         """Get all services registered for this GATT server.
@@ -137,7 +170,7 @@ class BleakClientCoreBluetooth(BaseBleakClient):
                 descriptors = await cbapp.central_manager_delegate.connected_peripheral_delegate.discoverDescriptors_(
                     characteristic
                 )
-
+                print("***********adding**************")  # BSIEVER
                 self.services.add_characteristic(
                     BleakGATTCharacteristicCoreBluetooth(characteristic)
                 )

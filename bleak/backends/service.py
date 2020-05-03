@@ -83,6 +83,7 @@ class BleakGATTServiceCollection(object):
     @property
     def characteristics(self) -> dict:
         """Returns dictionary of UUID strings to BleakGATTCharacteristic"""
+        print("****returning dict********")  # BSIEVER
         return self.__characteristics
 
     @property
